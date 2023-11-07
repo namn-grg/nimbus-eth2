@@ -566,6 +566,49 @@ func asConsensusType*(payload: engine_api.GetPayloadV3Response):
     blobs: Blobs payload.blobsBundle.blobs.mapIt(it.bytes)
   )
 
+# VERGE adds execution witness to the ExecutionPayload
+func asConsensusType*(rpcExecutionPayload: ExecutionPayloadV4):
+    verge.ExecutionPayload =
+  template getTransaction(tt: TypedTransaction): bellatrix.Transaction =
+    bellatrix.Transaction.init(tt.distinctBase)
+
+  verge.ExecutionPayload(
+    parent_hash: rpcExecutionPayload.parentHash.asEth2Digest,
+    feeRecipient:
+      ExecutionAddress(data: rpcExecutionPayload.feeRecipient.distinctBase),
+    state_root: rpcExecutionPayload.stateRoot.asEth2Digest,
+    receipts_root: rpcExecutionPayload.receiptsRoot.asEth2Digest,
+    logs_bloom: BloomLogs(data: rpcExecutionPayload.logsBloom.distinctBase),
+    prev_randao: rpcExecutionPayload.prevRandao.asEth2Digest,
+    block_number: rpcExecutionPayload.blockNumber.uint64,
+    gas_limit: rpcExecutionPayload.gasLimit.uint64,
+    gas_used: rpcExecutionPayload.gasUsed.uint64,
+    timestamp: rpcExecutionPayload.timestamp.uint64,
+    extra_data: List[byte, MAX_EXTRA_DATA_BYTES].init(rpcExecutionPayload.extraData.bytes),
+    base_fee_per_gas: rpcExecutionPayload.baseFeePerGas,
+    block_hash: rpcExecutionPayload.blockHash.asEth2Digest,
+    transactions: List[bellatrix.Transaction, MAX_TRANSACTIONS_PER_PAYLOAD].init(
+      mapIt(rpcExecutionPayload.transactions, it.getTransaction)),
+    withdrawals: List[capella.Withdrawal, MAX_WITHDRAWALS_PER_PAYLOAD].init(
+      mapIt(rpcExecutionPayload.withdrawals, it.asConsensusWithdrawal)),
+    blob_gas_used: rpcExecutionPayload.blobGasUsed.uint64,
+    excess_blob_gas: rpcExecutionPayload.excessBlobGas.uint64,
+    execution_witness: rpcExecutionPayload.executionWitness)
+
+func asConsensusType*(payload: engine_api.GetPayloadV4Response):
+    verge.ExecutionPayloadForSigning =
+  verge.ExecutionPayloadForSigning(
+    executionPayload: payload.executionPayload.asConsensusType,
+    blockValue: payload.blockValue,
+    # TODO
+    # The `mapIt` calls below are necessary only because we use different distinct
+    # types for KZG commitments and Blobs in the `web3` and the `deneb` spec types.
+    # Both are defined as `array[N, byte]` under the hood.
+    kzgs: KzgCommitments payload.blobsBundle.commitments.mapIt(it.bytes),
+    proofs: payload.blobsBundle.proofs.mapIt(it.bytes),
+    blobs: Blobs payload.blobsBundle.blobs.mapIt(it.bytes)
+  )
+
 func asEngineExecutionPayload*(executionPayload: bellatrix.ExecutionPayload):
     ExecutionPayloadV1 =
   template getTypedTransaction(tt: bellatrix.Transaction): TypedTransaction =
@@ -641,6 +684,33 @@ func asEngineExecutionPayload*(executionPayload: deneb.ExecutionPayload):
     withdrawals: mapIt(executionPayload.withdrawals, it.asEngineWithdrawal),
     blobGasUsed: Quantity(executionPayload.blob_gas_used),
     excessBlobGas: Quantity(executionPayload.excess_blob_gas))
+
+# VERGE adds execution witness to the payload
+func asEngineExecutionPayload*(payload: verge.ExecutionPayload):
+    ExecutionPayloadV4 =
+  template getTypedTransaction(tt: bellatrix.Transaction): TypedTransaction =
+    TypedTransaction(tt.distinctBase)
+
+  engine_api.ExecutionPayloadV4(
+    parentHash: payload.parent_hash.asBlockHash,
+    feeRecipient: Address(payload.fee_recipient.data),
+    stateRoot: payload.state_root.asBlockHash,
+    receiptsRoot: payload.receipts_root.asBlockHash,
+    logsBloom:
+      FixedBytes[BYTES_PER_LOGS_BLOOM](payload.logs_bloom.data),
+    prevRandao: payload.prev_randao.asBlockHash,
+    blockNumber: Quantity(payload.block_number),
+    gasLimit: Quantity(payload.gas_limit),
+    gasUsed: Quantity(payload.gas_used),
+    timestamp: Quantity(payload.timestamp),
+    extraData: DynamicBytes[0, MAX_EXTRA_DATA_BYTES](payload.extra_data),
+    baseFeePerGas: payload.base_fee_per_gas,
+    blockHash: payload.block_hash.asBlockHash,
+    transactions: mapIt(payload.transactions, it.getTypedTransaction),
+    withdrawals: mapIt(payload.withdrawals, it.asEngineWithdrawal),
+    blobGasUsed: Quantity(payload.blob_gas_used),
+    excessBlobGas: Quantity(payload.excess_blob_gas),
+    executionWitness: DynamicBytes[0, MAX_EXTRA_DATA_BYTES](payload.execution_witness))
 
 func shortLog*(b: Eth1Block): string =
   try:

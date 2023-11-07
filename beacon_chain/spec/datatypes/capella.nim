@@ -88,6 +88,8 @@ type
     transactions*: List[Transaction, MAX_TRANSACTIONS_PER_PAYLOAD]
     withdrawals*: List[Withdrawal, MAX_WITHDRAWALS_PER_PAYLOAD]
       ## [New in Capella]
+    execution_witness*: ExecutionWitness  
+      ## [New in Verge]
 
   ExecutionPayloadForSigning* = object
     executionPayload*: ExecutionPayload
